@@ -9,6 +9,7 @@ import {Node, Schema, State} from "@ds/schema/Schema.sol";
 import {ItemUtils, ItemConfig} from "@ds/utils/ItemUtils.sol";
 import {BuildingUtils, BuildingConfig, Material, Input, Output} from "@ds/utils/BuildingUtils.sol";
 import {ExampleMenu} from "../src/ExampleMenu.sol";
+import {PostOffice} from "../src/PostOffice.sol";
 
 using Schema for State;
 
@@ -45,10 +46,12 @@ contract Deployer is Script {
         // deploy
         // bytes24 hammerItem = registerHammerItem(ds, extensionID);
         bytes24 exampleMenu = registerExampleMenu(ds, extensionID);
+        bytes24 postOffice = registerPostOffice(ds, extensionID + 1);
 
         // dump deployed ids
         // console2.log("ItemKind", uint256(bytes32(hammerItem)));
-        console2.log("ExampleMenu", uint256(bytes32(exampleMenu)));
+        console2.log("exampleMenu", uint256(bytes32(exampleMenu)));
+        console2.log("postOffice", uint256(bytes32(postOffice)));
 
         vm.stopBroadcast();
     }
@@ -102,6 +105,41 @@ contract Deployer is Script {
                 ],
                 implementation: address(new ExampleMenu()),
                 plugin: vm.readFile("src/ExampleMenu.js")
+            })
+        );
+    }
+
+    // register a new
+    function registerPostOffice(Game ds, uint64 extensionID) public returns (bytes24 buildingKind) {
+        // find the base item ids we will use as inputs for our hammer factory
+        bytes24 none = 0x0;
+        bytes24 glassGreenGoo = ItemUtils.GlassGreenGoo();
+        bytes24 beakerBlueGoo = ItemUtils.BeakerBlueGoo();
+        bytes24 flaskRedGoo = ItemUtils.FlaskRedGoo();
+
+        // register a new building kind
+        return BuildingUtils.register(
+            ds,
+            BuildingConfig({
+                id: extensionID,
+                name: "Post Office",
+                materials: [
+                    Material({quantity: 10, item: glassGreenGoo}), // these are what it costs to construct the factory
+                    Material({quantity: 10, item: beakerBlueGoo}),
+                    Material({quantity: 10, item: flaskRedGoo}),
+                    Material({quantity: 0, item: none})
+                ],
+                inputs: [
+                    Input({quantity: 0, item: none}),
+                    Input({quantity: 0, item: none}),
+                    Input({quantity: 0, item: none}),
+                    Input({quantity: 0, item: none})
+                ],
+                outputs: [
+                    Output({quantity: 0, item: none}) // this is the output that can be crafted given the inputs
+                ],
+                implementation: address(new PostOffice()),
+                plugin: vm.readFile("src/PostOffice.js")
             })
         );
     }

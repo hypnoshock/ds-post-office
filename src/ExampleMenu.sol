@@ -29,9 +29,7 @@ using Schema for State;
 */
 
 contract ExampleMenu is BuildingKind {
-    mapping(bytes24 => bytes24) mobileUnitToBag;
-
-    function use(Game ds, bytes24 buildingInstance, bytes24 seeker, bytes calldata payload) public {
+    function use(Game ds, bytes24 buildingInstance, bytes24, /*seeker*/ bytes calldata payload) public {
         // From the payload, determine if we triggered use from menu 1 or menu 2
         (uint8 menuNum, uint64 data) = abi.decode(payload[4:], (uint8, uint64));
 
