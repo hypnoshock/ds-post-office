@@ -55,7 +55,7 @@ contract PostOffice is BuildingKind {
             equipToNextAvailableSlot(s, buildingInstance, bag);
 
             // Log who the bag is destined to
-            bagToUnit[bag] = unit; //toUnit;
+            bagToUnit[bag] = toUnit;
 
             return;
         }
@@ -67,7 +67,7 @@ contract PostOffice is BuildingKind {
                 if (bagToUnit[custodyBag] == unit) {
                     // Unequip from building
                     s.setEquipSlot(buildingInstance, i, bytes24(0));
-                    s.setOwner(custodyBag, bytes24(0)); // HACK: the owner is supposed to be the player not the seeker.
+                    s.setOwner(custodyBag, bytes24(0)); // HACK: the owner is supposed to be the player so we don't have that info therefore making it 'public'
 
                     equipToNextAvailableSlot(s, unit, custodyBag);
                     bagToUnit[custodyBag] = bytes24(0);

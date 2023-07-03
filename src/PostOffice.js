@@ -16,12 +16,15 @@ export default function update({ selected, world }) {
       return;
     }
 
+    const recipient = values["recipient"];
+    if (!recipient) return;
+
     ds.log(`sending bag at equip slot: ${+values["equipSlot"]}`);
-    ds.log(`to unit: ${selectedEngineer.id}`);
+    ds.log(`to unit: ${recipient}`);
 
     const payload = ds.encodeCall(
       "function sendBag(uint8 equipSlot, bytes24 toUnit)",
-      [+values["equipSlot"], selectedEngineer.id]
+      [+values["equipSlot"], recipient]
     );
 
     ds.dispatch({
@@ -93,6 +96,8 @@ export default function update({ selected, world }) {
                 <option>2</option>
                 <option>3</option>
               </select>
+              <label>Recipient's unit ID</label>
+              <input type="text" name="recipient"></input>
               <button type="submit" style="width:100%; padding:5px; border-radius: 10px;">Send</button>
           </select>
             `,
