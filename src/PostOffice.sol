@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import {Game} from "cog/Game.sol";
 import {State} from "cog/State.sol";
-import {Rel, Schema, Kind} from "@ds/schema/Schema.sol";
+import {Rel, Schema, Kind, Node} from "@ds/schema/Schema.sol";
 import {Actions} from "@ds/actions/Actions.sol";
 import {BuildingKind} from "@ds/ext/BuildingKind.sol";
 import {console} from "forge-std/console.sol";
@@ -29,6 +29,7 @@ using Schema for State;
 */
 
 interface PostOfficeActions {
+    function getEmptyBag() external;
     function sendBag(uint8 equipSlot, bytes24 toUnit, bytes24 toOffice) external;
     function collectBag() external;
     function collectForDelivery() external;
@@ -43,6 +44,14 @@ contract PostOffice is BuildingKind {
 
     function use(Game ds, bytes24 buildingInstance, bytes24 unit, bytes calldata payload) public {
         State s = ds.getState();
+
+        if (bytes4(payload) == PostOfficeActions.getEmptyBag.selector) {
+            (uint8 equipSlot, bool foundSlot) = _getNextAvailableEquipSlot(s, unit);
+            if (foundSlot) {
+                _spawnBag(s, unit, s.getOwner(unit), equipSlot);
+            }
+            return;
+        }
 
         if (bytes4(payload) == PostOfficeActions.sendBag.selector) {
             (uint8 equipSlot, bytes24 toUnit, bytes24 toOffice) = abi.decode(payload[4:], (uint8, bytes24, bytes24));
@@ -76,7 +85,7 @@ contract PostOffice is BuildingKind {
                 if (bagToUnit[custodyBag] == unit && bagToOffice[custodyBag] == buildingInstance) {
                     // Unequip from building
                     s.setEquipSlot(buildingInstance, i, bytes24(0));
-                    s.setOwner(custodyBag, bytes24(0)); // HACK: the owner is supposed to be the player so we don't have that info therefore making it 'public'
+                    s.setOwner(custodyBag, s.getOwner(unit));
 
                     _equipToNextAvailableSlot(s, unit, custodyBag);
                     bagToUnit[custodyBag] = bytes24(0);
@@ -139,5 +148,31 @@ contract PostOffice is BuildingKind {
                 revert("entity has run out of slots!");
             }
         }
+    }
+
+    function _getNextAvailableEquipSlot(State s, bytes24 equipee) private view returns (uint8, bool) {
+        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
+            bytes24 heldEquipment = s.getEquipSlot(equipee, i);
+            if (heldEquipment == bytes24(0)) {
+                return (i, true);
+            }
+        }
+
+        return (0, false);
+    }
+
+    // TODO: Should be rule
+    function _spawnBag(State s, bytes24 seeker, bytes24 owner, uint8 equipSlot) private {
+        bytes24 bag;
+        uint256 inc;
+        while (bag == bytes24(0)) {
+            bag = Node.Bag(uint64(uint256(keccak256(abi.encode(seeker, equipSlot, inc)))));
+            if (s.getOwner(bag) != bytes24(0)) {
+                bag = bytes24(0);
+            }
+        }
+
+        s.setOwner(bag, owner);
+        s.setEquipSlot(seeker, equipSlot, bag);
     }
 }

@@ -6,6 +6,25 @@ export default function update({ selected, world }) {
   const selectedBuilding = selectedTile?.building;
   const selectedEngineer = seeker;
 
+  const getEmptyBag = () => {
+    if (!selectedEngineer) {
+      ds.log("no selected engineer");
+      return;
+    }
+
+    const payload = ds.encodeCall("function getEmptyBag()", []);
+
+    ds.dispatch({
+      name: "BUILDING_USE",
+      args: [selectedBuilding.id, selectedEngineer.id, payload],
+    });
+  };
+
+  const logAddresses = () => {
+    ds.log(`unit: ${selectedEngineer.id}`);
+    ds.log(`office: ${selectedBuilding.id}`);
+  };
+
   const sendBag = (values) => {
     if (!selectedEngineer) {
       ds.log("no selected engineer");
@@ -107,6 +126,12 @@ export default function update({ selected, world }) {
                 content: "postmanMenu",
                 disabled: false,
               },
+              {
+                text: `Log addresses`,
+                type: "action",
+                action: logAddresses,
+                disabled: false,
+              },
             ],
           },
           {
@@ -130,6 +155,12 @@ export default function update({ selected, world }) {
                 disabled: false,
               },
               {
+                text: `Get empty bag`,
+                type: "action",
+                action: getEmptyBag,
+                disabled: false,
+              },
+              {
                 text: `Return to main menu`,
                 type: "toggle",
                 content: "default",
@@ -142,27 +173,21 @@ export default function update({ selected, world }) {
             type: "inline",
             html: `
               <h2>Send bag</h2>
-              <p>Select equip slot</p>
+              <p>Select bag number</p>
               <select name="equipSlot">
-                <option>0</option>
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
+                ${selectedEngineer.bags.map(
+                  (equipSlot, index) =>
+                    `<option value=${equipSlot.key}>${index + 1}</option>`
+                )}
               </select>
               <p>Recipient's unit ID</p>
               <input type="text" name="toUnit"></input>
-              <p>Post office ID (leave blank for this office)</p>
+              <p>Destination office ID (leave blank for this office)</p>
               <input type="text" name="toOffice"></input>
               <button type="submit" style="width:100%; padding:5px; border-radius: 10px;">Send</button>
             `,
             submit: sendBag,
             buttons: [
-              // {
-              //   text: `Send`,
-              //   type: "action",
-              //   action: sendBag,
-              //   disabled: false,
-              // },
               {
                 text: `Back`,
                 type: "toggle",
