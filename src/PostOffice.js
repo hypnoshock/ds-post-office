@@ -25,6 +25,15 @@ export default function update({ selected, world }) {
     ds.log(`office: ${selectedBuilding.id}`);
   };
 
+  const panic = () => {
+    const payload = ds.encodeCall("function panic()", []);
+
+    ds.dispatch({
+      name: "BUILDING_USE",
+      args: [selectedBuilding.id, selectedEngineer.id, payload],
+    });
+  };
+
   const sendBag = (values) => {
     if (!selectedEngineer) {
       ds.log("no selected engineer");
@@ -39,14 +48,17 @@ export default function update({ selected, world }) {
     if (!toUnit) return;
 
     const toOffice = values["toOffice"] || selectedBuilding.id;
+    const sendEquipSlot = +values["sendEquipSlot"];
+    const payEquipSlot = +values["payEquipSlot"];
 
     ds.log(`sending bag at equip slot: ${+values["equipSlot"]}`);
     ds.log(`to unit: ${toUnit}`);
     ds.log(`to office: ${toOffice}`);
+    ds.log(`sendEquipSlot: ${sendEquipSlot} pay slot: ${payEquipSlot}`);
 
     const payload = ds.encodeCall(
-      "function sendBag(uint8 equipSlot, bytes24 toUnit, bytes24 toOffice)",
-      [+values["equipSlot"], toUnit, toOffice]
+      "function sendBag(uint8 sendEquipSlot, bytes24 toUnit, bytes24 toOffice, uint8 payEquipSlot)",
+      [sendEquipSlot, toUnit, toOffice, payEquipSlot]
     );
 
     ds.dispatch({
@@ -132,6 +144,12 @@ export default function update({ selected, world }) {
                 action: logAddresses,
                 disabled: false,
               },
+              // {
+              //   text: `Panic`,
+              //   type: "action",
+              //   action: panic,
+              //   disabled: false,
+              // },
             ],
           },
           {
@@ -173,8 +191,16 @@ export default function update({ selected, world }) {
             type: "inline",
             html: `
               <h2>Send bag</h2>
-              <p>Select bag number</p>
-              <select name="equipSlot">
+              <p>Select bag number to send</p>
+              <select name="sendEquipSlot">
+                ${selectedEngineer.bags.map(
+                  (equipSlot, index) =>
+                    `<option value=${equipSlot.key}>${index + 1}</option>`
+                )}
+              </select>
+              <p>Select bag number for payment</p>
+              <select name="payEquipSlot">
+                <option value='255'>No payment</option>
                 ${selectedEngineer.bags.map(
                   (equipSlot, index) =>
                     `<option value=${equipSlot.key}>${index + 1}</option>`
