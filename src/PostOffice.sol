@@ -29,18 +29,23 @@ using Schema for State;
 */
 
 interface PostOfficeActions {
-    function sendBag(uint8 equipSlot, bytes24 toUnit) external;
+    function sendBag(uint8 equipSlot, bytes24 toUnit, bytes24 toOffice) external;
     function collectBag() external;
+    function collectForDelivery() external;
+    function deliverBags() external;
 }
+
+uint8 constant MAX_EQUIP_SLOTS = 100; // was reverting at 256!
 
 contract PostOffice is BuildingKind {
     mapping(bytes24 => bytes24) bagToUnit;
+    mapping(bytes24 => bytes24) bagToOffice;
 
     function use(Game ds, bytes24 buildingInstance, bytes24 unit, bytes calldata payload) public {
         State s = ds.getState();
 
         if (bytes4(payload) == PostOfficeActions.sendBag.selector) {
-            (uint8 equipSlot, bytes24 toUnit) = abi.decode(payload[4:], (uint8, bytes24));
+            (uint8 equipSlot, bytes24 toUnit, bytes24 toOffice) = abi.decode(payload[4:], (uint8, bytes24, bytes24));
 
             bytes24 bag = s.getEquipSlot(unit, equipSlot);
             require(bytes4(bag) == Kind.Bag.selector, "selected equip slot isn't a bag");
@@ -52,38 +57,79 @@ contract PostOffice is BuildingKind {
             s.setOwner(bag, buildingInstance);
 
             // Set bag to next available equip slot
-            equipToNextAvailableSlot(s, buildingInstance, bag);
+            _equipToNextAvailableSlot(s, buildingInstance, bag);
 
-            // Log who the bag is destined to
+            // Log who and where the bag is destined to
+            // TODO check that toUnit is a unit and check toOffice is a post office
             bagToUnit[bag] = toUnit;
+            bagToOffice[bag] = toOffice;
 
             return;
         }
 
         if (bytes4(payload) == PostOfficeActions.collectBag.selector) {
             // NOTE: Directly setting the state is illegal however, I wanted some way of knowing if the payload decoded correctly
-            for (uint8 i = 0; i < 100; i++) {
+            for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
                 bytes24 custodyBag = s.getEquipSlot(buildingInstance, i);
-                if (bagToUnit[custodyBag] == unit) {
+
+                // If bag belongs to Unit and is at this building.
+                if (bagToUnit[custodyBag] == unit && bagToOffice[custodyBag] == buildingInstance) {
                     // Unequip from building
                     s.setEquipSlot(buildingInstance, i, bytes24(0));
                     s.setOwner(custodyBag, bytes24(0)); // HACK: the owner is supposed to be the player so we don't have that info therefore making it 'public'
 
-                    equipToNextAvailableSlot(s, unit, custodyBag);
+                    _equipToNextAvailableSlot(s, unit, custodyBag);
                     bagToUnit[custodyBag] = bytes24(0);
+                    bagToOffice[custodyBag] = bytes24(0);
                 }
             }
 
             return;
         }
 
+        if (bytes4(payload) == PostOfficeActions.collectForDelivery.selector) {
+            _collectForDelivery(s, buildingInstance, unit);
+            return;
+        }
+
+        if (bytes4(payload) == PostOfficeActions.deliverBags.selector) {
+            _deliverBags(s, buildingInstance, unit);
+            return;
+        }
+
         revert("No action matches sig:");
+    }
+
+    function _collectForDelivery(State s, bytes24 buildingInstance, bytes24 unit) private {
+        // NOTE: Directly setting the state is illegal however, I wanted some way of knowing if the payload decoded correctly
+        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
+            bytes24 custodyBag = s.getEquipSlot(buildingInstance, i);
+            if (bagToOffice[custodyBag] != bytes24(0) && bagToOffice[custodyBag] != buildingInstance) {
+                // Unequip from building
+                s.setEquipSlot(buildingInstance, i, bytes24(0));
+                s.setOwner(custodyBag, bagToOffice[custodyBag]); // owner is set to destination office
+
+                _equipToNextAvailableSlot(s, unit, custodyBag);
+            }
+        }
+    }
+
+    function _deliverBags(State s, bytes24 buildingInstance, bytes24 unit) private {
+        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
+            bytes24 bag = s.getEquipSlot(unit, i);
+            if (bagToOffice[bag] != bytes24(0) && bagToOffice[bag] == buildingInstance) {
+                // Unequip from unit and set owner to building
+                s.setEquipSlot(unit, i, bytes24(0));
+                // s.setOwner(bag, buildingInstance); // Owner should already be this office
+                _equipToNextAvailableSlot(s, buildingInstance, bag);
+            }
+        }
     }
 
     // TODO: Should be a rule. First thought is only the owner of the equipment or the equipee can choose who or what
     //       the equipment can be equipped to
-    function equipToNextAvailableSlot(State s, bytes24 equipee, bytes24 equipment) private {
-        for (uint8 i = 0; i < 256; i++) {
+    function _equipToNextAvailableSlot(State s, bytes24 equipee, bytes24 equipment) private {
+        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
             bytes24 heldEquipment = s.getEquipSlot(equipee, i);
             if (heldEquipment == bytes24(0)) {
                 s.setEquipSlot(equipee, i, equipment);

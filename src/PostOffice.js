@@ -16,15 +16,18 @@ export default function update({ selected, world }) {
       return;
     }
 
-    const recipient = values["recipient"];
-    if (!recipient) return;
+    const toUnit = values["toUnit"];
+    if (!toUnit) return;
+
+    const toOffice = values["toOffice"] || selectedBuilding.id;
 
     ds.log(`sending bag at equip slot: ${+values["equipSlot"]}`);
-    ds.log(`to unit: ${recipient}`);
+    ds.log(`to unit: ${toUnit}`);
+    ds.log(`to office: ${toOffice}`);
 
     const payload = ds.encodeCall(
-      "function sendBag(uint8 equipSlot, bytes24 toUnit)",
-      [+values["equipSlot"], recipient]
+      "function sendBag(uint8 equipSlot, bytes24 toUnit, bytes24 toOffice)",
+      [+values["equipSlot"], toUnit, toOffice]
     );
 
     ds.dispatch({
@@ -47,10 +50,32 @@ export default function update({ selected, world }) {
 
     ds.dispatch({
       name: "BUILDING_USE",
-      args: [selectedBuilding.id, selectedEngineer.id, payload], // bytes ordered msb first: menuNum, increment
+      args: [selectedBuilding.id, selectedEngineer.id, payload],
     });
 
     ds.log("Use 2");
+  };
+
+  const collectBagsForDelivery = () => {
+    ds.log("collectBagsForDelivery");
+
+    const payload = ds.encodeCall("function collectForDelivery()", []);
+
+    ds.dispatch({
+      name: "BUILDING_USE",
+      args: [selectedBuilding.id, selectedEngineer.id, payload],
+    });
+  };
+
+  const deliverBags = () => {
+    ds.log("deliverBags");
+
+    const payload = ds.encodeCall("function deliverBags()", []);
+
+    ds.dispatch({
+      name: "BUILDING_USE",
+      args: [selectedBuilding.id, selectedEngineer.id, payload],
+    });
   };
 
   return {
@@ -60,14 +85,36 @@ export default function update({ selected, world }) {
         type: "building",
         id: "post-office",
         title: "Hypno Post",
-        summary: `Send a bag of items addressed to a particular Unit to the nearest office`,
+        summary: `Send a bag of items addressed to a particular Unit and choose which post office to have it delivered to`,
         content: [
           {
             id: "default",
             type: "inline",
             html: `
-                <h1>Main Menu</h1>
+                <h2>Main Menu</h2>
                 <p>Please select from the following options</p>
+              `,
+            buttons: [
+              {
+                text: `I'm a Customer`,
+                type: "toggle",
+                content: "customerMenu",
+                disabled: false,
+              },
+              {
+                text: `I'm a Postman`,
+                type: "toggle",
+                content: "postmanMenu",
+                disabled: false,
+              },
+            ],
+          },
+          {
+            id: "customerMenu",
+            type: "inline",
+            html: `
+                <h2>Customer</h2>
+                <p>From this menu you can send bags or collect any bags that are addressed to you at this building</p>
               `,
             buttons: [
               {
@@ -77,9 +124,15 @@ export default function update({ selected, world }) {
                 disabled: false,
               },
               {
-                text: `Collect bag`,
+                text: `Collect bags`,
                 type: "toggle",
                 content: "collectBag",
+                disabled: false,
+              },
+              {
+                text: `Return to main menu`,
+                type: "toggle",
+                content: "default",
                 disabled: false,
               },
             ],
@@ -89,17 +142,18 @@ export default function update({ selected, world }) {
             type: "inline",
             html: `
               <h2>Send bag</h2>
-              <label>Select equip slot</label>
+              <p>Select equip slot</p>
               <select name="equipSlot">
                 <option>0</option>
                 <option>1</option>
                 <option>2</option>
                 <option>3</option>
               </select>
-              <label>Recipient's unit ID</label>
-              <input type="text" name="recipient"></input>
+              <p>Recipient's unit ID</p>
+              <input type="text" name="toUnit"></input>
+              <p>Post office ID (leave blank for this office)</p>
+              <input type="text" name="toOffice"></input>
               <button type="submit" style="width:100%; padding:5px; border-radius: 10px;">Send</button>
-          </select>
             `,
             submit: sendBag,
             buttons: [
@@ -110,9 +164,9 @@ export default function update({ selected, world }) {
               //   disabled: false,
               // },
               {
-                text: `Return to main menu`,
+                text: `Back`,
                 type: "toggle",
-                content: "default",
+                content: "customerMenu",
                 disabled: false,
               },
             ],
@@ -128,6 +182,34 @@ export default function update({ selected, world }) {
                 text: `Collect`,
                 type: "action",
                 action: collectBag,
+                disabled: false,
+              },
+              {
+                text: `Back`,
+                type: "toggle",
+                content: "customerMenu",
+                disabled: false,
+              },
+            ],
+          },
+          {
+            id: "postmanMenu",
+            type: "inline",
+            html: `
+                <h2>Postman</h2>
+                <p>From this menu you collect bags for delivery or drop off bags</p>
+              `,
+            buttons: [
+              {
+                text: `Collect bags`,
+                type: "action",
+                action: collectBagsForDelivery,
+                disabled: false,
+              },
+              {
+                text: `Deliver bags`,
+                type: "action",
+                action: deliverBags,
                 disabled: false,
               },
               {
