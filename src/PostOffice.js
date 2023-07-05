@@ -224,7 +224,7 @@ export default function update({ selected, world }) {
               <h2>Send bag</h2>
               <p>Select bag number to send</p>
               <select name="sendEquipSlot">
-                ${selectedEngineer.bags.map(
+                ${selectedEngineer?.bags.map(
                   (equipSlot, index) =>
                     `<option value=${equipSlot.key}>${index + 1}</option>`
                 )}
@@ -232,14 +232,14 @@ export default function update({ selected, world }) {
               <p>Select bag number for payment</p>
               <select name="payEquipSlot">
                 <option value='255'>No payment</option>
-                ${selectedEngineer.bags.map(
+                ${selectedEngineer?.bags.map(
                   (equipSlot, index) =>
                     `<option value=${equipSlot.key}>${index + 1}</option>`
                 )}
               </select>
               <p>Recipient</p>
               <select name="toUnit">
-                  <option value='${selectedEngineer.id}'>Yourself</option>
+                  <option value='${selectedEngineer?.id}'>Yourself</option>
                   ${allSeekers.map(
                     (s) =>
                       `<option value='${s.id}'>${
