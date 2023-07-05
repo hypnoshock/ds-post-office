@@ -1,10 +1,10 @@
 import ds from "dawnseekers";
 
 export default function update({ selected, world }) {
-  const { tiles, seeker } = selected || {};
+  const { tiles, mobileUnit } = selected || {};
   const selectedTile = tiles && tiles.length === 1 ? tiles[0] : undefined;
   const selectedBuilding = selectedTile?.building;
-  const selectedEngineer = seeker;
+  const selectedUnit = mobileUnit;
 
   const kindID = selectedBuilding.kind?.id;
   const worldPostOffices = world.buildings.filter(
@@ -14,7 +14,7 @@ export default function update({ selected, world }) {
   const allSeekers = world.tiles.flatMap((tile) => tile.seekers);
 
   const getEmptyBag = () => {
-    if (!selectedEngineer) {
+    if (!selectedUnit) {
       ds.log("no selected engineer");
       return;
     }
@@ -23,12 +23,12 @@ export default function update({ selected, world }) {
 
     ds.dispatch({
       name: "BUILDING_USE",
-      args: [selectedBuilding.id, selectedEngineer.id, payload],
+      args: [selectedBuilding.id, selectedUnit.id, payload],
     });
   };
 
   const logAddresses = () => {
-    ds.log(`unit: ${selectedEngineer.id}`);
+    ds.log(`unit: ${selectedUnit.id}`);
     ds.log(`office: ${selectedBuilding.id}`);
   };
 
@@ -37,12 +37,12 @@ export default function update({ selected, world }) {
 
     ds.dispatch({
       name: "BUILDING_USE",
-      args: [selectedBuilding.id, selectedEngineer.id, payload],
+      args: [selectedBuilding.id, selectedUnit.id, payload],
     });
   };
 
   const sendBag = (values) => {
-    if (!selectedEngineer) {
+    if (!selectedUnit) {
       ds.log("no selected engineer");
       return;
     }
@@ -69,12 +69,12 @@ export default function update({ selected, world }) {
 
     ds.dispatch({
       name: "BUILDING_USE",
-      args: [selectedBuilding.id, selectedEngineer.id, payload],
+      args: [selectedBuilding.id, selectedUnit.id, payload],
     });
   };
 
   const collectBag = () => {
-    if (!selectedEngineer) {
+    if (!selectedUnit) {
       ds.log("no selected engineer");
       return;
     }
@@ -87,7 +87,7 @@ export default function update({ selected, world }) {
 
     ds.dispatch({
       name: "BUILDING_USE",
-      args: [selectedBuilding.id, selectedEngineer.id, payload],
+      args: [selectedBuilding.id, selectedUnit.id, payload],
     });
 
     ds.log("Use 2");
@@ -100,7 +100,7 @@ export default function update({ selected, world }) {
 
     ds.dispatch({
       name: "BUILDING_USE",
-      args: [selectedBuilding.id, selectedEngineer.id, payload],
+      args: [selectedBuilding.id, selectedUnit.id, payload],
     });
   };
 
@@ -111,7 +111,7 @@ export default function update({ selected, world }) {
 
     ds.dispatch({
       name: "BUILDING_USE",
-      args: [selectedBuilding.id, selectedEngineer.id, payload],
+      args: [selectedBuilding.id, selectedUnit.id, payload],
     });
   };
 
@@ -224,7 +224,7 @@ export default function update({ selected, world }) {
               <h2>Send bag</h2>
               <p>Select bag number to send</p>
               <select name="sendEquipSlot">
-                ${selectedEngineer?.bags.map(
+                ${selectedUnit?.bags.map(
                   (equipSlot, index) =>
                     `<option value=${equipSlot.key}>${index + 1}</option>`
                 )}
@@ -232,14 +232,14 @@ export default function update({ selected, world }) {
               <p>Select bag number for payment</p>
               <select name="payEquipSlot">
                 <option value='255'>No payment</option>
-                ${selectedEngineer?.bags.map(
+                ${selectedUnit?.bags.map(
                   (equipSlot, index) =>
                     `<option value=${equipSlot.key}>${index + 1}</option>`
                 )}
               </select>
               <p>Recipient</p>
               <select name="toUnit">
-                  <option value='${selectedEngineer?.id}'>Yourself</option>
+                  <option value='${selectedUnit?.id}'>Yourself</option>
                   ${allSeekers.map(
                     (s) =>
                       `<option value='${s.id}'>${
