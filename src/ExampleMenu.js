@@ -16,17 +16,14 @@ export default function update({ selected, world }) {
       return;
     }
 
-    const payload = ds.encodeCall(
-      "function menuAction(uint8 menuNum, uint64 inc)",
-      [1, 2]
-    );
+    ds.log("Use 1");
+
+    const payload = ds.encodeCall("function useMenu1()");
 
     ds.dispatch({
       name: "BUILDING_USE",
       args: [selectedBuilding.id, selectedEngineer.id, payload],
     });
-
-    ds.log("Use 1");
   };
 
   const use2 = () => {
@@ -39,17 +36,14 @@ export default function update({ selected, world }) {
       return;
     }
 
-    const payload = ds.encodeCall(
-      "function menuAction(uint8 menuNum, uint64 inc)",
-      [2, 4]
-    );
+    ds.log("Use 2");
+
+    const payload = ds.encodeCall("function useMenu2(uint64 inc)", [2]);
 
     ds.dispatch({
       name: "BUILDING_USE",
       args: [selectedBuilding.id, selectedEngineer.id, payload], // bytes ordered msb first: menuNum, increment
     });
-
-    ds.log("Use 2");
   };
 
   return {
@@ -65,7 +59,7 @@ export default function update({ selected, world }) {
             id: "default",
             type: "inline",
             html: `
-                <h1>Main Menu</h1>
+                <h2>Main Menu</h2>
                 <p>Please select a sub menu from the list below</p>
               `,
             buttons: [
@@ -87,7 +81,7 @@ export default function update({ selected, world }) {
             id: "menu1",
             type: "inline",
             html: `
-              <h1>Menu 1</h1>
+              <h2>Menu 1</h2>
             `,
             buttons: [
               {
@@ -108,7 +102,7 @@ export default function update({ selected, world }) {
             id: "menu2",
             type: "inline",
             html: `
-              <h1>Menu 2</h1>
+              <h2>Menu 2</h2>
             `,
             buttons: [
               {

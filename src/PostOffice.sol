@@ -18,9 +18,11 @@ using Schema for State;
     state{
       buildings: nodes(match: {kinds: ["Building"]}) {
       	id
-        test: edges(match: {kinds: ["Building"], via:{rel: "Balance"}}) {
+        equipSlots: edges(match: {kinds: ["Bag"], via:{rel: "Equip"}}) {
           key
-          weight
+          node {
+            id
+          }
         }
       }
     }
@@ -60,71 +62,12 @@ contract PostOffice is BuildingKind {
             (uint8 sendEquipSlot, bytes24 toUnit, bytes24 toOffice, uint8 payEquipSlot) =
                 abi.decode(payload[4:], (uint8, bytes24, bytes24, uint8));
 
-            bytes24 bag = s.getEquipSlot(unit, sendEquipSlot);
-            require(bytes4(bag) == Kind.Bag.selector, "selected equip slot isn't a bag");
-            require(bagToUnit[bag] == bytes24(0), "Cannot send as this bag is tracked for delivery");
-
-            // Unequip from unit and set owner to building
-            // TODO: Make a rule that only allows the owner to set the new owner
-            s.setEquipSlot(unit, sendEquipSlot, bytes24(0));
-            s.setOwner(bag, buildingInstance);
-
-            // Set bag to next available equip slot
-            _equipToNextAvailableSlot(s, buildingInstance, bag);
-
-            // Log who and where the bag is destined to
-            // TODO check that toUnit is a unit and check toOffice is a post office
-            bagToUnit[bag] = toUnit;
-            bagToOffice[bag] = toOffice;
-
-            // payment
-            if (payEquipSlot != 255) {
-                bytes24 paymentBag = s.getEquipSlot(unit, payEquipSlot);
-                require(bytes4(paymentBag) == Kind.Bag.selector, "selected payment slot isn't a bag");
-                require(paymentBag != bag, "bag to send cannot be same as bag for payment");
-
-                bagToPayment[bag] = paymentBag;
-
-                s.setEquipSlot(unit, payEquipSlot, bytes24(0));
-                s.setOwner(paymentBag, buildingInstance);
-                _equipToNextAvailableSlot(s, buildingInstance, paymentBag);
-            }
-
+            _sendBag(s, buildingInstance, unit, sendEquipSlot, toUnit, toOffice, payEquipSlot);
             return;
         }
 
         if (bytes4(payload) == PostOfficeActions.collectBag.selector) {
-            // NOTE: Directly setting the state is illegal however, I wanted some way of knowing if the payload decoded correctly
-            for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
-                bytes24 custodyBag = s.getEquipSlot(buildingInstance, i);
-
-                // If bag belongs to Unit and is at this building.
-                // && bagToOffice[custodyBag] == buildingInstance // Add this to if statement to enforce delivery. Without the addressee can collect from drop off point before delivery
-                if (bagToUnit[custodyBag] == unit) {
-                    // Unequip from building
-                    s.setEquipSlot(buildingInstance, i, bytes24(0));
-                    s.setOwner(custodyBag, s.getOwner(unit));
-
-                    _equipToNextAvailableSlot(s, unit, custodyBag);
-                    bagToUnit[custodyBag] = bytes24(0);
-                    bagToOffice[custodyBag] = bytes24(0);
-
-                    // payment (if the recipient picked it up themselves)
-                    if (bagToPayment[custodyBag] != bytes24(0)) {
-                        // Unequip from building
-                        (uint8 payEquipSlot, bool found) =
-                            _getEquipSlotForEquipment(s, buildingInstance, bagToPayment[custodyBag]);
-                        require(found, "Payment bag not attached to building!!");
-
-                        s.setEquipSlot(buildingInstance, payEquipSlot, bytes24(0));
-                        s.setOwner(bagToPayment[custodyBag], s.getOwner(unit));
-
-                        _equipToNextAvailableSlot(s, unit, bagToPayment[custodyBag]);
-                        bagToPayment[custodyBag] = bytes24(0);
-                    }
-                }
-            }
-
+            _collectBag(s, buildingInstance, unit);
             return;
         }
 
@@ -152,21 +95,80 @@ contract PostOffice is BuildingKind {
             return;
         }
 
-        revert("No action matches sig:");
+        revert("No action matches function signature:");
     }
 
-    function _getEquipSlotForEquipment(State s, bytes24 equipee, bytes24 equipment)
-        private
-        view
-        returns (uint8 equipSlot, bool found)
-    {
+    function _sendBag(
+        State s,
+        bytes24 buildingInstance,
+        bytes24 unit,
+        uint8 sendEquipSlot,
+        bytes24 toUnit,
+        bytes24 toOffice,
+        uint8 payEquipSlot
+    ) private {
+        bytes24 bag = s.getEquipSlot(unit, sendEquipSlot);
+        require(bytes4(bag) == Kind.Bag.selector, "selected equip slot isn't a bag");
+        require(bagToUnit[bag] == bytes24(0), "Cannot send as this bag is tracked for delivery");
+
+        // Unequip from unit and set owner to building
+        // TODO: Make a rule that only allows the owner to set the new owner
+        s.setEquipSlot(unit, sendEquipSlot, bytes24(0));
+        s.setOwner(bag, buildingInstance);
+
+        // Set bag to next available equip slot
+        _equipToNextAvailableSlot(s, buildingInstance, bag);
+
+        // Log who and where the bag is destined to
+        // TODO check that toUnit is a unit and check toOffice is a post office
+        bagToUnit[bag] = toUnit;
+        bagToOffice[bag] = toOffice;
+
+        // payment
+        if (payEquipSlot != 255) {
+            bytes24 paymentBag = s.getEquipSlot(unit, payEquipSlot);
+            require(bytes4(paymentBag) == Kind.Bag.selector, "selected payment slot isn't a bag");
+            require(paymentBag != bag, "bag to send cannot be same as bag for payment");
+
+            bagToPayment[bag] = paymentBag;
+
+            s.setEquipSlot(unit, payEquipSlot, bytes24(0));
+            s.setOwner(paymentBag, buildingInstance);
+            _equipToNextAvailableSlot(s, buildingInstance, paymentBag);
+        }
+    }
+
+    function _collectBag(State s, bytes24 buildingInstance, bytes24 unit) private {
+        // NOTE: Directly setting the state is illegal however, I wanted some way of knowing if the payload decoded correctly
         for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
-            if (s.getEquipSlot(equipee, i) == equipment) {
-                return (i, true);
+            bytes24 custodyBag = s.getEquipSlot(buildingInstance, i);
+
+            // If bag belongs to Unit and is at this building.
+            // && bagToOffice[custodyBag] == buildingInstance // Add this to if statement to enforce delivery. Without the addressee can collect from drop off point before delivery
+            if (bagToUnit[custodyBag] == unit) {
+                // Unequip from building
+                s.setEquipSlot(buildingInstance, i, bytes24(0));
+                s.setOwner(custodyBag, s.getOwner(unit));
+
+                _equipToNextAvailableSlot(s, unit, custodyBag);
+                bagToUnit[custodyBag] = bytes24(0);
+                bagToOffice[custodyBag] = bytes24(0);
+
+                // payment (if the recipient picked it up themselves)
+                if (bagToPayment[custodyBag] != bytes24(0)) {
+                    // Unequip from building
+                    (uint8 payEquipSlot, bool found) =
+                        _getEquipSlotForEquipment(s, buildingInstance, bagToPayment[custodyBag]);
+                    require(found, "Payment bag not attached to building!!");
+
+                    s.setEquipSlot(buildingInstance, payEquipSlot, bytes24(0));
+                    s.setOwner(bagToPayment[custodyBag], s.getOwner(unit));
+
+                    _equipToNextAvailableSlot(s, unit, bagToPayment[custodyBag]);
+                    bagToPayment[custodyBag] = bytes24(0);
+                }
             }
         }
-
-        return (0, false);
     }
 
     function _collectForDelivery(State s, bytes24 buildingInstance, bytes24 unit) private {
@@ -217,6 +219,20 @@ contract PostOffice is BuildingKind {
                 }
             }
         }
+    }
+
+    function _getEquipSlotForEquipment(State s, bytes24 equipee, bytes24 equipment)
+        private
+        view
+        returns (uint8 equipSlot, bool found)
+    {
+        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
+            if (s.getEquipSlot(equipee, i) == equipment) {
+                return (i, true);
+            }
+        }
+
+        return (0, false);
     }
 
     // TODO: Should be a rule. First thought is only the owner of the equipment or the equipee can choose who or what
