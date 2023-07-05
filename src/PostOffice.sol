@@ -138,6 +138,7 @@ contract PostOffice is BuildingKind {
             return;
         }
 
+        // -- Will just give all the custody bags to the caller of this action. Used in development during bug fixing
         if (bytes4(payload) == PostOfficeActions.panic.selector) {
             for (uint8 i = 2; i < MAX_EQUIP_SLOTS; i++) {
                 bytes24 custodyBag = s.getEquipSlot(buildingInstance, i);

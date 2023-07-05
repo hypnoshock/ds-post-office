@@ -6,6 +6,13 @@ export default function update({ selected, world }) {
   const selectedBuilding = selectedTile?.building;
   const selectedEngineer = seeker;
 
+  const kindID = selectedBuilding.kind?.id;
+  const worldPostOffices = world.buildings.filter(
+    (b) => b.kind?.id == kindID && b.id != selectedBuilding.id
+  );
+
+  const allSeekers = world.tiles.flatMap((tile) => tile.seekers);
+
   const getEmptyBag = () => {
     if (!selectedEngineer) {
       ds.log("no selected engineer");
@@ -51,7 +58,6 @@ export default function update({ selected, world }) {
     const sendEquipSlot = +values["sendEquipSlot"];
     const payEquipSlot = +values["payEquipSlot"];
 
-    ds.log(`sending bag at equip slot: ${+values["equipSlot"]}`);
     ds.log(`to unit: ${toUnit}`);
     ds.log(`to office: ${toOffice}`);
     ds.log(`sendEquipSlot: ${sendEquipSlot} pay slot: ${payEquipSlot}`);
@@ -115,7 +121,7 @@ export default function update({ selected, world }) {
       {
         type: "building",
         id: "post-office",
-        title: "Hypno Post",
+        title: `Hypno Post (${selectedBuilding.id.slice(-6 * 2)})`,
         summary: `Send a bag of items addressed to a particular Unit and choose which post office to have it delivered to`,
         content: [
           {
@@ -124,6 +130,7 @@ export default function update({ selected, world }) {
             html: `
                 <h2>Main Menu</h2>
                 <p>Please select from the following options</p>
+                <p>This post office ID: ${selectedBuilding.id.slice(-6 * 2)}</p>
               `,
             buttons: [
               {
@@ -139,9 +146,9 @@ export default function update({ selected, world }) {
                 disabled: false,
               },
               {
-                text: `Log addresses`,
-                type: "action",
-                action: logAddresses,
+                text: `Help`,
+                type: "toggle",
+                content: "helpMenu",
                 disabled: false,
               },
               // {
@@ -150,6 +157,30 @@ export default function update({ selected, world }) {
               //   action: panic,
               //   disabled: false,
               // },
+            ],
+          },
+          {
+            id: "helpMenu",
+            type: "inline",
+            html: `
+                <h2>Help</h2>
+                <div>
+                  <p>This building is still in development and a bit tricky to use at the moment!</p>
+                </div>
+              `,
+            buttons: [
+              // {
+              //   text: `Log addresses`,
+              //   type: "action",
+              //   action: logAddresses,
+              //   disabled: false,
+              // },
+              {
+                text: `Return to main menu`,
+                type: "toggle",
+                content: "default",
+                disabled: false,
+              },
             ],
           },
           {
@@ -206,10 +237,26 @@ export default function update({ selected, world }) {
                     `<option value=${equipSlot.key}>${index + 1}</option>`
                 )}
               </select>
-              <p>Recipient's unit ID</p>
-              <input type="text" name="toUnit"></input>
-              <p>Destination office ID (leave blank for this office)</p>
-              <input type="text" name="toOffice"></input>
+              <p>Recipient</p>
+              <select name="toUnit">
+                  <option value='${selectedEngineer.id}'>Yourself</option>
+                  ${allSeekers.map(
+                    (s) =>
+                      `<option value='${s.id}'>${
+                        s.name ? s.name.value : s.id.slice(-8)
+                      }</option>`
+                  )}
+              </select>
+              <p>Destination office ID</p>
+              <select name="toOffice">
+                  <option value=''>This office</option>
+                  ${worldPostOffices.map(
+                    (building) =>
+                      `<option value='${building.id}'>${building.id.slice(
+                        -6 * 2
+                      )}</option>`
+                  )}
+              </select>
               <button type="submit" style="width:100%; padding:5px; border-radius: 10px;">Send</button>
             `,
             submit: sendBag,
