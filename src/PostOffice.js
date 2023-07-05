@@ -11,7 +11,7 @@ export default function update({ selected, world }) {
     (b) => b.kind?.id == kindID && b.id != selectedBuilding.id
   );
 
-  const allUnits = world.tiles.flatMap((tile) => tile.seekers);
+  const allUnits = world.tiles.flatMap((tile) => tile.mobileUnits);
 
   const getEmptyBag = () => {
     if (!selectedUnit) {
