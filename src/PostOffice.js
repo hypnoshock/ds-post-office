@@ -1,4 +1,4 @@
-import ds from "dawnseekers";
+import ds from "downstream";
 
 export default function update({ selected, world }) {
   const { tiles, mobileUnit } = selected || {};
@@ -11,7 +11,7 @@ export default function update({ selected, world }) {
     (b) => b.kind?.id == kindID && b.id != selectedBuilding.id
   );
 
-  const allSeekers = world.tiles.flatMap((tile) => tile.seekers);
+  const allUnits = world.tiles.flatMap((tile) => tile.seekers);
 
   const getEmptyBag = () => {
     if (!selectedUnit) {
@@ -240,7 +240,7 @@ export default function update({ selected, world }) {
               <p>Recipient</p>
               <select name="toUnit">
                   <option value='${selectedUnit?.id}'>Yourself</option>
-                  ${allSeekers.map(
+                  ${allUnits.map(
                     (s) =>
                       `<option value='${s.id}'>${
                         s.name ? s.name.value : s.id.slice(-8)
