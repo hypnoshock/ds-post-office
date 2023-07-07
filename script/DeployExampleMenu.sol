@@ -23,7 +23,7 @@ genRandomNumber(8, 10)
 
 */
 
-// BUILDING_KIND_EXTENSION_ID=4594675476523367339 GAME_ADDRESS=0x1D8e3A7Dc250633C192AC1bC9D141E1f95C419AB forge script script/Deploy.sol --broadcast --verify --rpc-url "https://network-ds-test.dev.playmint.com"
+// BUILDING_KIND_EXTENSION_ID=4594675476523367338 GAME_ADDRESS=0x1D8e3A7Dc250633C192AC1bC9D141E1f95C419AB forge script script/Deploy.sol --broadcast --verify --rpc-url "https://network-ds-test.dev.playmint.com"
 
 contract Deployer is Script {
     function setUp() public {}
@@ -44,15 +44,15 @@ contract Deployer is Script {
         vm.startBroadcast(playerDeploymentKey);
 
         // deploy
-        bytes24 postOffice = registerPostOffice(ds, extensionID);
+        bytes24 exampleMenu = registerExampleMenu(ds, extensionID);
 
-        console2.log("postOffice", uint256(bytes32(postOffice)));
+        console2.log("exampleMenu", uint256(bytes32(exampleMenu)));
 
         vm.stopBroadcast();
     }
 
     // register a new
-    function registerPostOffice(Game ds, uint64 extensionID) public returns (bytes24 buildingKind) {
+    function registerExampleMenu(Game ds, uint64 extensionID) public returns (bytes24 buildingKind) {
         // find the base item ids we will use as inputs for our hammer factory
         bytes24 none = 0x0;
         bytes24 glassGreenGoo = ItemUtils.GlassGreenGoo();
@@ -64,7 +64,7 @@ contract Deployer is Script {
             ds,
             BuildingConfig({
                 id: extensionID,
-                name: "Post Office",
+                name: "Example Menu",
                 materials: [
                     Material({quantity: 10, item: glassGreenGoo}), // these are what it costs to construct the factory
                     Material({quantity: 10, item: beakerBlueGoo}),
@@ -80,8 +80,8 @@ contract Deployer is Script {
                 outputs: [
                     Output({quantity: 0, item: none}) // this is the output that can be crafted given the inputs
                 ],
-                implementation: address(new PostOffice()),
-                plugin: vm.readFile("src/PostOffice.js")
+                implementation: address(new ExampleMenu()),
+                plugin: vm.readFile("src/ExampleMenu.js")
             })
         );
     }
