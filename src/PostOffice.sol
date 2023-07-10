@@ -51,7 +51,7 @@ struct Consignment {
     uint8 equipSlot; // possibly not needed
 }
 
-uint8 constant MAX_EQUIP_SLOTS = 100; // was reverting at 256!
+uint8 constant MAX_EQUIP_SLOTS = 100;
 
 contract PostOffice is BuildingKind {
     Consignment[] public consignments;
@@ -253,9 +253,8 @@ contract PostOffice is BuildingKind {
         }
 
         // store the ledger in the name annotation of the entity we own ... again, don't judge me (because Farm's did it first)
-        dispatcher.dispatch(
-            abi.encodeCall(Actions.NAME_OWNED_ENTITY, (consignmentLedger, Base64.encode(abi.encode(consignments))))
-        );
+        // Base64.encode(abi.encode(consignments))
+        s.annotate(consignmentLedger, "name", Base64.encode(abi.encode(consignments)));
     }
 
     function _getEquipSlotForEquipment(State s, bytes24 equipee, bytes24 equipment)
@@ -318,7 +317,7 @@ contract PostOffice is BuildingKind {
         // we are using a item's "name" annotation as a place to store data that can be read by a client plugin
         // this is a horrible hack and probably makes no sence to look at... don't judge me (because Farm's did it first), we need Books
 
-        // Marked 4 bytes are the item ID
+        // Marked 4 bytes is the item ID
         //                 XXXXXXXX
         ledger = 0x6a7a67f0210d1f8300000001000000640000006400000064;
         if (state.getOwner(ledger) != 0) {

@@ -23,7 +23,7 @@ genRandomNumber(8, 10)
 
 */
 
-// BUILDING_KIND_EXTENSION_ID=4594675476523367339 GAME_ADDRESS=0x1D8e3A7Dc250633C192AC1bC9D141E1f95C419AB forge script script/Deploy.sol --broadcast --verify --rpc-url "https://network-ds-test.dev.playmint.com"
+// BUILDING_KIND_EXTENSION_ID=4594675476523367340 GAME_ADDRESS=0x1D8e3A7Dc250633C192AC1bC9D141E1f95C419AB forge script script/Deploy.sol --broadcast --verify --rpc-url "https://network-ds-test.dev.playmint.com"
 
 contract Deployer is Script {
     function setUp() public {}
@@ -64,7 +64,7 @@ contract Deployer is Script {
             ds,
             BuildingConfig({
                 id: extensionID,
-                name: "Post Office",
+                name: "Post Office V2 (Under Construction)",
                 materials: [
                     Material({quantity: 10, item: glassGreenGoo}), // these are what it costs to construct the factory
                     Material({quantity: 10, item: beakerBlueGoo}),

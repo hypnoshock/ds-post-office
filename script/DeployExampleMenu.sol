@@ -23,7 +23,7 @@ genRandomNumber(8, 10)
 
 */
 
-// BUILDING_KIND_EXTENSION_ID=4594675476523367338 GAME_ADDRESS=0x1D8e3A7Dc250633C192AC1bC9D141E1f95C419AB forge script script/Deploy.sol --broadcast --verify --rpc-url "https://network-ds-test.dev.playmint.com"
+// BUILDING_KIND_EXTENSION_ID=4594675476523367338 GAME_ADDRESS=0x1D8e3A7Dc250633C192AC1bC9D141E1f95C419AB forge script script/DeployExampleMenu.sol --broadcast --verify --rpc-url "https://network-ds-test.dev.playmint.com"
 
 contract Deployer is Script {
     function setUp() public {}
