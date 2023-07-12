@@ -34,7 +34,7 @@ using Schema for State;
 
 interface PostOfficeActions {
     function getEmptyBag() external;
-    function sendBag(uint8 sendEquipSlot, bytes24 toUnit, bytes24 toOffice, uint8 payEquipSlot) external;
+    function sendBag(bytes24 sendBag, bytes24 toUnit, bytes24 toOffice, bytes24 payBag) external;
     function collectBag() external;
     function collectForDelivery() external;
     function deliverBags() external;
@@ -48,57 +48,57 @@ struct Consignment {
     bytes24 bag;
     bytes24 paymentBag;
     bytes24 equipee; // possibly useful for frontend
-    uint8 equipSlot; // possibly not needed
+    uint256 index; // TODO: Refactor bagToConsignment to be just the indexes and remove this
 }
 
-uint8 constant MAX_EQUIP_SLOTS = 100;
+uint8 constant MAX_EQUIP_SLOT_INDEX = 254; // There appears to be a problem with state.getEquipSlot if used with 255
 
 contract PostOffice is BuildingKind {
     Consignment[] public consignments;
-    mapping(bytes24 => Consignment) bagToConsignment;
+    mapping(bytes24 => Consignment) bagToConsignment; // TODO: Refactor this to hold just consignmentLedger indexes instead of a full copy of the object
     bytes24 consignmentLedger;
 
     function use(Game ds, bytes24 buildingInstance, bytes24 unit, bytes calldata payload) public {
         State s = ds.getState();
         Dispatcher dispatcher = ds.getDispatcher();
 
-        if (bytes4(payload) == PostOfficeActions.getEmptyBag.selector) {
-            (uint8 equipSlot, bool foundSlot) = _getNextAvailableEquipSlot(s, unit);
-            if (foundSlot) {
-                _spawnBag(s, unit, s.getOwner(unit), equipSlot);
-            }
-            return;
-        }
-
         if (bytes4(payload) == PostOfficeActions.sendBag.selector) {
-            (uint8 sendEquipSlot, bytes24 toUnit, bytes24 toOffice, uint8 payEquipSlot) =
-                abi.decode(payload[4:], (uint8, bytes24, bytes24, uint8));
+            (bytes24 sendBag, bytes24 toUnit, bytes24 toOffice, bytes24 payBag) =
+                abi.decode(payload[4:], (bytes24, bytes24, bytes24, bytes24));
 
-            _sendBag(s, buildingInstance, unit, sendEquipSlot, toUnit, toOffice, payEquipSlot);
+            _sendBag(dispatcher, s, buildingInstance, unit, sendBag, toUnit, toOffice, payBag);
         }
 
         if (bytes4(payload) == PostOfficeActions.collectBag.selector) {
-            _collectBag(s, buildingInstance, unit);
+            _collectBag(s, dispatcher, buildingInstance, unit);
         }
 
         if (bytes4(payload) == PostOfficeActions.collectForDelivery.selector) {
-            _collectForDelivery(s, buildingInstance, unit);
+            _collectForDelivery(s, dispatcher, buildingInstance, unit);
         }
 
         if (bytes4(payload) == PostOfficeActions.deliverBags.selector) {
-            _deliverBags(s, buildingInstance, unit);
+            _deliverBags(s, dispatcher, buildingInstance, unit);
         }
 
         // -- Will just give all the custody bags to the caller of this action. Used in development during bug fixing
         if (bytes4(payload) == PostOfficeActions.panic.selector) {
-            for (uint8 i = 2; i < MAX_EQUIP_SLOTS; i++) {
+            for (uint8 i = 2; i <= MAX_EQUIP_SLOT_INDEX; i++) {
                 bytes24 custodyBag = s.getEquipSlot(buildingInstance, i);
+                if (bytes4(custodyBag) == Kind.Bag.selector) {
+                    (uint8 equipSlot, bool found) = _getNextAvailableEquipSlot(s, unit);
+                    require(found, "So spare equip slot found on unit");
 
-                // Unequip from building
-                s.setEquipSlot(buildingInstance, i, bytes24(0));
-                s.setOwner(custodyBag, s.getOwner(unit));
+                    dispatcher.dispatch(
+                        abi.encodeCall(Actions.TRANSFER_BAG, (custodyBag, buildingInstance, unit, equipSlot))
+                    );
+                    dispatcher.dispatch(abi.encodeCall(Actions.TRANSFER_BAG_OWNERSHIP, (custodyBag, unit)));
 
-                _equipToNextAvailableSlot(s, unit, custodyBag);
+                    Consignment storage c = bagToConsignment[custodyBag];
+                    if (c.bag != bytes24(0)) {
+                        _deleteConsignment(c);
+                    }
+                }
             }
         }
 
@@ -107,77 +107,86 @@ contract PostOffice is BuildingKind {
         // revert("No action matches function signature:");
     }
 
+    /*
+     * NOTE: Owner of the sendBag and payBag needs to be set to this building prior to this function being called
+     */
     function _sendBag(
-        State s,
+        Dispatcher dispatcher,
+        State state,
         bytes24 buildingInstance,
         bytes24 unit,
-        uint8 sendEquipSlot,
+        bytes24 sendBag,
         bytes24 toUnit,
         bytes24 toOffice,
-        uint8 payEquipSlot
+        bytes24 payBag
     ) private {
-        bytes24 bag = s.getEquipSlot(unit, sendEquipSlot);
-        require(bytes4(bag) == Kind.Bag.selector, "selected equip slot isn't a bag");
-        require(bagToConsignment[bag].toUnit == bytes24(0), "Cannot send as this bag is tracked for delivery");
+        require(bytes4(sendBag) == Kind.Bag.selector, "Entity selected for send isn't a bag");
+        require(bagToConsignment[sendBag].toUnit == bytes24(0), "Cannot send as this bag is tracked for delivery");
+        require(bytes4(toUnit) == Kind.MobileUnit.selector, "toUnit is not a MobileUnit");
+        require(
+            state.getOwner(sendBag) == buildingInstance, "buildingInstance must have ownership of bag before sending"
+        );
 
-        // Unequip from unit and set owner to building
-        // TODO: Make a rule that only allows the owner to set the new owner
-        s.setEquipSlot(unit, sendEquipSlot, bytes24(0));
-        s.setOwner(bag, buildingInstance);
+        {
+            // Only works if ownership was transfered to the buildingInstance by the player before calling sendBag
+            (uint8 equipSlot, bool found) = _getNextAvailableEquipSlot(state, buildingInstance);
+            require(found, "Post office full. Cannot hold any more bags!");
+            dispatcher.dispatch(abi.encodeCall(Actions.TRANSFER_BAG, (sendBag, unit, buildingInstance, equipSlot)));
+        }
 
         // Log who and where the bag is destined to
-        // TODO check that toUnit is a unit and check toOffice is a post office
-        Consignment memory c = Consignment({
-            fromUnit: unit,
-            toUnit: toUnit,
-            toOffice: toOffice,
-            bag: bag,
-            paymentBag: bytes24(0),
-            equipee: buildingInstance,
-            equipSlot: _equipToNextAvailableSlot(s, buildingInstance, bag)
-        });
-        consignments.push(c);
-        bagToConsignment[bag] = c;
+        // TODO check that toOffice is a post office
+        Consignment storage c = consignments.push();
+        c.fromUnit = unit;
+        c.toUnit = toUnit;
+        c.toOffice = toOffice;
+        c.bag = sendBag;
+        c.paymentBag = payBag;
+        c.equipee = buildingInstance;
+        c.index = consignments.length - 1;
+        bagToConsignment[sendBag] = c;
 
         // payment
-        if (payEquipSlot != 255) {
-            bytes24 paymentBag = s.getEquipSlot(unit, payEquipSlot);
-            require(bytes4(paymentBag) == Kind.Bag.selector, "selected payment slot isn't a bag");
-            require(paymentBag != bag, "bag to send cannot be same as bag for payment");
+        if (payBag != bytes24(0)) {
+            require(bytes4(payBag) == Kind.Bag.selector, "Entity selected for payment isn't a bag");
+            require(
+                state.getOwner(payBag) == buildingInstance,
+                "buildingInstance must have ownership of payment bag before sending"
+            );
+            (uint8 equipSlot, bool found) = _getNextAvailableEquipSlot(state, buildingInstance);
+            require(found, "Post office full. Cannot hold any more bags!");
 
-            c.paymentBag = paymentBag;
-
-            s.setEquipSlot(unit, payEquipSlot, bytes24(0));
-            s.setOwner(paymentBag, buildingInstance);
-            _equipToNextAvailableSlot(s, buildingInstance, paymentBag);
+            dispatcher.dispatch(abi.encodeCall(Actions.TRANSFER_BAG, (payBag, unit, buildingInstance, equipSlot)));
         }
     }
 
-    function _collectBag(State s, bytes24 buildingInstance, bytes24 unit) private {
-        // NOTE: Directly setting the state is illegal however, I wanted some way of knowing if the payload decoded correctly
-        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
+    function _collectBag(State s, Dispatcher dispatcher, bytes24 buildingInstance, bytes24 unit) private {
+        for (uint8 i = 0; i <= MAX_EQUIP_SLOT_INDEX; i++) {
             bytes24 custodyBag = s.getEquipSlot(buildingInstance, i);
             Consignment storage c = bagToConsignment[custodyBag];
 
             // If bag belongs to Unit and is at this building.
             // && bagToOffice[custodyBag] == buildingInstance // Add this to if statement to enforce delivery. Without the addressee can collect from drop off point before delivery
             if (c.toUnit == unit) {
-                // Unequip from building
-                s.setEquipSlot(buildingInstance, i, bytes24(0));
-                s.setOwner(custodyBag, s.getOwner(unit));
+                uint8 equipSlot;
+                bool found;
+                (equipSlot, found) = _getNextAvailableEquipSlot(s, unit);
+                require(found, "Unit cannot carry any more bags!");
 
-                _equipToNextAvailableSlot(s, unit, custodyBag);
+                dispatcher.dispatch(
+                    abi.encodeCall(Actions.TRANSFER_BAG, (custodyBag, buildingInstance, unit, equipSlot))
+                );
+                dispatcher.dispatch(abi.encodeCall(Actions.TRANSFER_BAG_OWNERSHIP, (custodyBag, unit)));
 
                 // payment (if the recipient picked it up themselves)
                 if (c.paymentBag != bytes24(0)) {
-                    // Unequip from building
-                    (uint8 payEquipSlot, bool found) = _getEquipSlotForEquipment(s, buildingInstance, c.paymentBag);
-                    require(found, "Payment bag not attached to building!!");
+                    (equipSlot, found) = _getNextAvailableEquipSlot(s, unit);
+                    require(found, "Unit cannot carry any more bags!");
 
-                    s.setEquipSlot(buildingInstance, payEquipSlot, bytes24(0));
-                    s.setOwner(c.paymentBag, s.getOwner(unit));
-
-                    _equipToNextAvailableSlot(s, unit, c.paymentBag);
+                    dispatcher.dispatch(
+                        abi.encodeCall(Actions.TRANSFER_BAG, (c.paymentBag, buildingInstance, unit, equipSlot))
+                    );
+                    dispatcher.dispatch(abi.encodeCall(Actions.TRANSFER_BAG_OWNERSHIP, (c.paymentBag, unit)));
                 }
 
                 _deleteConsignment(c);
@@ -196,55 +205,74 @@ contract PostOffice is BuildingKind {
         }
     }
 
-    function _collectForDelivery(State s, bytes24 buildingInstance, bytes24 unit) private {
+    function _collectForDelivery(State s, Dispatcher dispatcher, bytes24 buildingInstance, bytes24 unit) private {
         // NOTE: Directly setting the state is illegal however, I wanted some way of knowing if the payload decoded correctly
-        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
+        for (uint8 i = 0; i <= MAX_EQUIP_SLOT_INDEX; i++) {
             bytes24 custodyBag = s.getEquipSlot(buildingInstance, i);
             Consignment storage c = bagToConsignment[custodyBag];
             if (c.toUnit != bytes24(0) && c.toOffice != buildingInstance) {
-                // Unequip from building
-                s.setEquipSlot(buildingInstance, i, bytes24(0));
-                s.setOwner(custodyBag, c.toOffice); // owner is set to destination office
+                uint8 equipSlot;
+                bool found;
+                (equipSlot, found) = _getNextAvailableEquipSlot(s, unit);
+                require(found, "Unit cannot carry any more bags!");
+
+                dispatcher.dispatch(
+                    abi.encodeCall(Actions.TRANSFER_BAG, (custodyBag, buildingInstance, unit, equipSlot))
+                );
+                dispatcher.dispatch(abi.encodeCall(Actions.TRANSFER_BAG_OWNERSHIP, (custodyBag, c.toOffice)));
 
                 c.equipee = unit;
-                c.equipSlot = _equipToNextAvailableSlot(s, unit, custodyBag);
+                bagToConsignment[custodyBag] = c;
+                consignments[c.index] = c;
 
                 // payment
                 if (c.paymentBag != bytes24(0)) {
-                    // Unequip from building
-                    (uint8 payEquipSlot, bool found) = _getEquipSlotForEquipment(s, buildingInstance, c.paymentBag);
-                    require(found, "Payment bag not attached to building!!");
+                    (equipSlot, found) = _getNextAvailableEquipSlot(s, unit);
+                    require(found, "Unit cannot carry any more bags!");
 
-                    s.setEquipSlot(buildingInstance, payEquipSlot, bytes24(0));
-                    s.setOwner(c.paymentBag, c.toOffice); // owner is set to destination office
-                    _equipToNextAvailableSlot(s, unit, c.paymentBag);
+                    // NOTE: We purposely don't transfer ownership to the unit as they only gain ownership if they successfully deliver the sendBag
+                    dispatcher.dispatch(
+                        abi.encodeCall(Actions.TRANSFER_BAG, (c.paymentBag, buildingInstance, unit, equipSlot))
+                    );
+                    dispatcher.dispatch(abi.encodeCall(Actions.TRANSFER_BAG_OWNERSHIP, (c.paymentBag, c.toOffice)));
                 }
             }
         }
     }
 
-    function _deliverBags(State s, bytes24 buildingInstance, bytes24 unit) private {
-        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
+    function _deliverBags(State s, Dispatcher dispatcher, bytes24 buildingInstance, bytes24 unit) private {
+        for (uint8 i = 0; i <= MAX_EQUIP_SLOT_INDEX; i++) {
             bytes24 bag = s.getEquipSlot(unit, i);
             Consignment storage c = bagToConsignment[bag];
             if (c.toOffice == buildingInstance) {
-                // Unequip from unit and set owner to building
-                s.setEquipSlot(unit, i, bytes24(0));
-                // s.setOwner(bag, buildingInstance); // Owner should already be this office
-                _equipToNextAvailableSlot(s, buildingInstance, bag);
+                uint8 equipSlot;
+                bool found;
+                (equipSlot, found) = _getNextAvailableEquipSlot(s, buildingInstance);
+                require(found, "Post office cannot hold any more bags!");
+
+                dispatcher.dispatch(abi.encodeCall(Actions.TRANSFER_BAG, (bag, unit, buildingInstance, equipSlot)));
+                c.equipee = buildingInstance;
+                bagToConsignment[bag] = c;
+                consignments[c.index] = c;
 
                 // payment
                 if (c.paymentBag != bytes24(0)) {
-                    require(
-                        s.getOwner(c.paymentBag) == buildingInstance, "Payment bag not owned by destination office!"
-                    );
-
                     // This effectively unlocks the bag for the postman
-                    s.setOwner(c.paymentBag, s.getOwner(unit));
-                    c.paymentBag = bytes24(0);
+                    dispatcher.dispatch(abi.encodeCall(Actions.TRANSFER_BAG_OWNERSHIP, (c.paymentBag, unit)));
                 }
             }
         }
+    }
+
+    function _getNextAvailableEquipSlot(State state, bytes24 equipee) private view returns (uint8, bool) {
+        for (uint8 i = 0; i <= MAX_EQUIP_SLOT_INDEX; i++) {
+            bytes24 equippedEntity = state.getEquipSlot(equipee, i);
+            if (equippedEntity == bytes24(0)) {
+                return (i, true);
+            }
+        }
+
+        return (0, false);
     }
 
     function _broadcastConsignments(State s, Dispatcher dispatcher) private {
@@ -255,62 +283,6 @@ contract PostOffice is BuildingKind {
         // store the ledger in the name annotation of the entity we own ... again, don't judge me (because Farm's did it first)
         // Base64.encode(abi.encode(consignments))
         s.annotate(consignmentLedger, "name", Base64.encode(abi.encode(consignments)));
-    }
-
-    function _getEquipSlotForEquipment(State s, bytes24 equipee, bytes24 equipment)
-        private
-        view
-        returns (uint8 equipSlot, bool found)
-    {
-        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
-            if (s.getEquipSlot(equipee, i) == equipment) {
-                return (i, true);
-            }
-        }
-
-        return (0, false);
-    }
-
-    // TODO: Should be a rule. First thought is only the owner of the equipment or the equipee can choose who or what
-    //       the equipment can be equipped to
-    // TODO: Dangerous if called twice as there is no check to see if the equipment was already equipped to the node
-    function _equipToNextAvailableSlot(State s, bytes24 equipee, bytes24 equipment) private returns (uint8 equipSlot) {
-        for (equipSlot = 0; equipSlot < MAX_EQUIP_SLOTS; equipSlot++) {
-            bytes24 heldEquipment = s.getEquipSlot(equipee, equipSlot);
-            if (heldEquipment == bytes24(0)) {
-                s.setEquipSlot(equipee, equipSlot, equipment);
-                return equipSlot;
-            }
-        }
-
-        revert("entity has run out of slots!");
-    }
-
-    function _getNextAvailableEquipSlot(State s, bytes24 equipee) private view returns (uint8, bool) {
-        for (uint8 i = 0; i < MAX_EQUIP_SLOTS; i++) {
-            bytes24 heldEquipment = s.getEquipSlot(equipee, i);
-            if (heldEquipment == bytes24(0)) {
-                return (i, true);
-            }
-        }
-
-        return (0, false);
-    }
-
-    // TODO: Should be rule
-    function _spawnBag(State s, bytes24 seeker, bytes24 owner, uint8 equipSlot) private {
-        bytes24 bag;
-        uint256 inc;
-        while (bag == bytes24(0)) {
-            bag = Node.Bag(uint64(uint256(keccak256(abi.encode(seeker, equipSlot, inc)))));
-            if (s.getOwner(bag) != bytes24(0)) {
-                bag = bytes24(0);
-                inc++;
-            }
-        }
-
-        s.setOwner(bag, owner);
-        s.setEquipSlot(seeker, equipSlot, bag);
     }
 
     function _getConsignmentLedger(State state, Dispatcher dispatcher) private returns (bytes24 ledger) {

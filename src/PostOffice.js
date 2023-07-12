@@ -1,5 +1,7 @@
 import ds from "downstream";
 
+const nullBytes24 = "0x000000000000000000000000000000000000000000000000";
+
 export default function update({ selected, world }) {
   const { tiles, mobileUnit } = selected || {};
   const selectedTile = tiles && tiles.length === 1 ? tiles[0] : undefined;
@@ -29,12 +31,17 @@ export default function update({ selected, world }) {
       return;
     }
 
-    const payload = ds.encodeCall("function getEmptyBag()", []);
-
     ds.dispatch({
-      name: "BUILDING_USE",
-      args: [selectedBuilding.id, selectedUnit.id, payload],
+      name: "SPAWN_EMPTY_BAG",
+      args: [selectedUnit.id],
     });
+  };
+
+  const getBagAtSlot = (equipee, equipSlotKey) => {
+    const equipSlotEdge = equipee.bags.find(
+      (equipSlot) => equipSlot.key == equipSlotKey
+    );
+    return equipSlotEdge?.bag;
   };
 
   const logAddresses = () => {
@@ -68,19 +75,40 @@ export default function update({ selected, world }) {
     const sendEquipSlot = +values["sendEquipSlot"];
     const payEquipSlot = +values["payEquipSlot"];
 
-    ds.log(`to unit: ${toUnit}`);
-    ds.log(`to office: ${toOffice}`);
-    ds.log(`sendEquipSlot: ${sendEquipSlot} pay slot: ${payEquipSlot}`);
+    const sendBag = getBagAtSlot(selectedUnit, sendEquipSlot);
+    if (!sendBag) {
+      return;
+    }
 
+    const actions = [];
+
+    // -- Transfer ownership
+    actions.push({
+      name: "TRANSFER_BAG_OWNERSHIP",
+      args: [sendBag.id, selectedBuilding.id],
+    });
+
+    // -- Payment
+    const payBag =
+      payEquipSlot != 255 ? getBagAtSlot(selectedUnit, payEquipSlot) : null;
+    if (payBag) {
+      actions.push({
+        name: "TRANSFER_BAG_OWNERSHIP",
+        args: [payBag.id, selectedBuilding.id],
+      });
+    }
+
+    // -- Send the bag
     const payload = ds.encodeCall(
-      "function sendBag(uint8 sendEquipSlot, bytes24 toUnit, bytes24 toOffice, uint8 payEquipSlot)",
-      [sendEquipSlot, toUnit, toOffice, payEquipSlot]
+      "function sendBag(bytes24 sendBag, bytes24 toUnit, bytes24 toOffice, bytes24 payBag)",
+      [sendBag.id, toUnit, toOffice, payBag ? payBag.id : nullBytes24]
     );
-
-    ds.dispatch({
+    actions.push({
       name: "BUILDING_USE",
       args: [selectedBuilding.id, selectedUnit.id, payload],
     });
+
+    ds.dispatch(...actions);
   };
 
   const collectBag = () => {
@@ -99,8 +127,6 @@ export default function update({ selected, world }) {
       name: "BUILDING_USE",
       args: [selectedBuilding.id, selectedUnit.id, payload],
     });
-
-    ds.log("Use 2");
   };
 
   const collectBagsForDelivery = () => {
@@ -161,12 +187,12 @@ export default function update({ selected, world }) {
                 content: "postmanMenu",
                 disabled: false,
               },
-              {
-                text: `Help`,
-                type: "toggle",
-                content: "helpMenu",
-                disabled: false,
-              },
+              // {
+              //   text: `Help`,
+              //   type: "toggle",
+              //   content: "helpMenu",
+              //   disabled: false,
+              // },
               // {
               //   text: `Panic`,
               //   type: "action",
@@ -219,6 +245,7 @@ export default function update({ selected, world }) {
                 }`,
                 type: "action",
                 action: collectBag,
+                // disabled: false,
                 disabled: !packagesWaiting || packagesWaiting == 0,
               },
               {
@@ -432,11 +459,11 @@ function getConsignmentLedger(buildings) {
           24
         )
       ),
-      equipSlot: toHexString(
+      index: toHexString(
         new Uint8Array(
           consignmentLedgerBytes.buffer,
           structLen * i + 32 * 8,
-          24
+          32
         )
       ),
     });
